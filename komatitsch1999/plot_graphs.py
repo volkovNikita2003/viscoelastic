@@ -1,382 +1,350 @@
+#!/usr/bin/env python3
+"""Plot RECT and SPECFEM2D solutions and their convergence graphs."""
+
 from pathlib import Path
-import numpy as np
-import pandas as pd
+import re
+
 import matplotlib.pyplot as plt
+import numpy as np
 
 
-def read_an_sol(filename):
-    return pd.read_csv(
-        filename,
-        sep=r"\s+",
-        header=None,
-        names=["x", "y"],
-        engine="python",
-    )
-
-
-def read_station_rect(filename):
-    df = pd.read_csv(
-        filename,
-        sep=r"\s+",
-        comment="#",
-        names=["T", "vx", "vy", "sxx", "syy", "sxy"],
-        engine="python",
-    )
-
-    t = df["T"].to_numpy()
-    vx = df["vx"].to_numpy()
-    vy = df["vy"].to_numpy()
-
-    ux = np.zeros_like(t, dtype=float)
-    uy = np.zeros_like(t, dtype=float)
-
-    dt = np.diff(t)
-
-    ux[1:] = np.cumsum(
-        0.5 * (vx[:-1] + vx[1:]) * dt
-    )
-    uy[1:] = np.cumsum(
-        0.5 * (vy[:-1] + vy[1:]) * dt
-    )
-
-    df["ux"] = ux
-    df["uy"] = uy
-
-    return df
-
-
-def plot_accuracy_graph(error_norms, filename_suffix=""):
-    rows = error_norms
-    rows = sorted(
-        rows,
-        key=lambda x: x["h"]
-    )
-
-    h_vals = [r["h"] for r in rows]
-
-    l1_vals = [r["L1"] for r in rows]
-    l2_vals = [r["L2"] for r in rows]
-    linf_vals = [r["Linf"] for r in rows]
-
-
-    log_h = np.log(h_vals)
-    p_l1, c_l1 = np.polyfit(log_h, np.log(l1_vals), 1)
-    p_l2, c_l2 = np.polyfit(log_h, np.log(l2_vals), 1)
-    p_linf, c_linf = np.polyfit(log_h, np.log(linf_vals), 1)
-    print(
-        f"{station} {component}: "
-        f"p(L1)={p_l1:.3f}, "
-        f"p(L2)={p_l2:.3f}, "
-        f"p(Linf)={p_linf:.3f}"
-    )
-
-    plt.figure(figsize=(7,5))
-
-    plt.loglog(
-        h_vals,
-        l1_vals,
-        "o-",
-        color="blue",
-        label=f"L1 (p={p_l1:.2f})",
-    )
-    plt.loglog(
-        h_vals,
-        l2_vals,
-        "s-",
-        color="red",
-        label=f"L2 (p={p_l2:.2f})",
-    )
-    plt.loglog(
-        h_vals,
-        linf_vals,
-        "^-",
-        color="green",
-        label=f"L∞ (p={p_linf:.2f})",
-    )
-
-    fit_l1 = np.exp(c_l1) * np.array(h_vals) ** p_l1
-    fit_l2 = np.exp(c_l2) * np.array(h_vals) ** p_l2
-    fit_linf = np.exp(c_linf) * np.array(h_vals) ** p_linf
-    plt.loglog(
-        h_vals,
-        fit_l1,
-        "--",
-        color="blue",
-        linewidth=1,
-    )
-    plt.loglog(
-        h_vals,
-        fit_l2,
-        "--",
-        color="red",
-        linewidth=1,
-    )
-    plt.loglog(
-        h_vals,
-        fit_linf,
-        "--",
-        color="green",
-        linewidth=1,
-    )
-
-    plt.xlabel("h")
-    plt.ylabel("error norm")
-
-    plt.grid(True, which="both")
-    plt.legend()
-    plt.title(
-        f"{station} {component}"
-    )
-
-    outfile = OUTPUT_DIR / f"{station}-{component}-error-norms{filename_suffix}.png"
-    plt.savefig(
-        outfile,
-        dpi=300,
-        bbox_inches="tight",
-    )
-    plt.close()
-    print(f"Сохранён {outfile}")
-
-
-
-
-
-BASE_DIR = Path(__file__).parent
-OUTPUT_DIR = BASE_DIR / "graphs"
-OUTPUT_DIR.mkdir(exist_ok=True)
-cases_h = [10, 4, 2, 1, 0.5, 0.25]
-# c1u = 3297.849
-rho = 2000
-
-
-# ----- аналитическое решение -----
-print(f"Аналитическое решение")
+BASE_DIR = Path(__file__).resolve().parent
 ANALYTICAL_DIR = BASE_DIR / "analytical_sol"
-SPECFEM_DIR = BASE_DIR / "specfem_sol/check_absolute_amplitude_of_force_source_seismograms_viscoelastic_auto_nx_88"
-
-
-
-# stations_an = {
-#     "_500.0_500.0": "station_1",
-#     "_0.0_500.0": "station_2",
-#     "_500.0_0.0": "station_3",
-#     "_-500.0_500.0": "station_4",
-# }
-
-# analytical_files = [
-#     "spectrum_of_the_source_used.gnu",
-# ]
-# # analytical_files += [f"Vx_time_analytical_solution_viscoelastic{i}.dat" for i in stations_an.keys()]
-# # analytical_files += [f"Vz_time_analytical_solution_viscoelastic{i}.dat" for i in stations_an.keys()]
-
-# analytical_files += [f"Ux_time_analytical_solution_viscoelastic.dat"]
-# analytical_files += [f"Uz_time_analytical_solution_viscoelastic.dat"]
-
-# analytical_files_elastic = [
-#     f"Ux_time_analytical_solution_elastic.dat",
-#     f"Uz_time_analytical_solution_elastic.dat"
-# ]
-
-# ----- RECT -----
-print(f"\nЧисленное решение")
 RECT_SOL_DIR = BASE_DIR / "rect_sol"
+SPECFEM_SOL_DIR = BASE_DIR / "specfem_sol"
+OUTPUT_DIR = BASE_DIR / "graphs"
 
+F0 = 18.0
+TIME_SHIFT = 1.2 / F0
+TIME_LIMITS = (0.0, 0.6)
+DOMAIN_SIZE_X = 2000.0
 
-# ----- сравнение численного и аналитического решений -----
-print(f"\nСравнение численного и аналитического решений")
-
-stations_an = {
-    "station_1": "",
-    # "station_2": "_0.0_500.0",
-    # "station_3": "_500.0_0.0",
-    # "station_4": "_-500.0_500.0",
+# analytical_suffix is appended to analytical filenames.  SPECFEM station names
+# use the receiver number written to files such as AA.S0001.BXX.semd.
+STATIONS = {
+    "station_1": {"analytical_suffix": "", "specfem_station": "S0001"},
+    # "station_2": {
+    #     "analytical_suffix": "_0.0_500.0",
+    #     "specfem_station": "S0002",
+    # },
 }
 
-analytical = {}
-analytical_elastic = {}
-specfem_sol = {}
+COMPONENTS = {
+    "ux": {"analytical_component": "Ux", "specfem_component": "BXX"},
+    "uy": {"analytical_component": "Uz", "specfem_component": "BXZ"},
+}
 
-for station, suffix in stations_an.items():
-    ux = read_an_sol(ANALYTICAL_DIR / f"Ux_time_analytical_solution_viscoelastic{suffix}.dat")
-    uy = read_an_sol(ANALYTICAL_DIR / f"Uz_time_analytical_solution_viscoelastic{suffix}.dat")
-    analytical[(station, "ux")] = ux
-    analytical[(station, "uy")] = uy
-
-    ux = read_an_sol(ANALYTICAL_DIR / f"Ux_time_analytical_solution_elastic{suffix}.dat")
-    uy = read_an_sol(ANALYTICAL_DIR / f"Uz_time_analytical_solution_elastic{suffix}.dat")
-    analytical_elastic[(station, "ux")] = ux
-    analytical_elastic[(station, "uy")] = uy
-
-    ux = np.loadtxt(SPECFEM_DIR/"OUTPUT_FILES/AA.S0001.BXX.semd")
-    uy = np.loadtxt(SPECFEM_DIR/"OUTPUT_FILES/AA.S0001.BXZ.semd")
-    specfem_sol[(station, "ux")] = ux
-    specfem_sol[(station, "uy")] = uy
+SPECFEM_PROJECT_PREFIX = (
+    "check_absolute_amplitude_of_force_source_seismograms_viscoelastic_auto_nx_"
+)
 
 
-scale_factors_num = {}
-scale_factors_an = {}
-for h in cases_h:
-    rect_dir = RECT_SOL_DIR / f"viscoelastic_schema-h_{h}/result/txt"
-    num = read_station_rect(
-        rect_dir / "station_1.txt"
+def read_two_column_file(filename: Path) -> tuple[np.ndarray, np.ndarray]:
+    values = np.loadtxt(filename, ndmin=2)
+    if values.shape[1] < 2:
+        raise ValueError(f"В файле {filename} ожидается не менее двух столбцов")
+    return values[:, 0], values[:, 1]
+
+
+def read_station_rect(filename: Path) -> dict[str, np.ndarray]:
+    """Read RECT velocities and integrate them to displacements."""
+    values = np.loadtxt(filename, comments="#", ndmin=2)
+    if values.shape[1] < 3:
+        raise ValueError(f"В файле {filename} ожидается не менее трёх столбцов")
+
+    time = values[:, 0]
+    dt = np.diff(time)
+    data = {"T": time}
+    for velocity, displacement in ((values[:, 1], "ux"), (values[:, 2], "uy")):
+        integrated = np.zeros_like(time, dtype=float)
+        integrated[1:] = np.cumsum(
+            0.5 * (velocity[:-1] + velocity[1:]) * dt
+        )
+        data[displacement] = integrated
+    return data
+
+
+def discover_rect_cases() -> list[tuple[float, Path]]:
+    cases = []
+    pattern = re.compile(r"viscoelastic_schema-h_(.+)")
+    for path in RECT_SOL_DIR.glob("viscoelastic_schema-h_*"):
+        match = pattern.fullmatch(path.name)
+        if match and path.is_dir():
+            try:
+                h = float(match.group(1))
+            except ValueError:
+                continue
+            cases.append((h, path))
+    return sorted(cases, key=lambda case: case[0])
+
+
+def discover_specfem_cases() -> list[tuple[int, Path]]:
+    cases = []
+    for path in SPECFEM_SOL_DIR.glob(f"{SPECFEM_PROJECT_PREFIX}*"):
+        if not path.is_dir():
+            continue
+        try:
+            nx = int(path.name.removeprefix(SPECFEM_PROJECT_PREFIX))
+        except ValueError:
+            continue
+        cases.append((nx, path))
+    return sorted(cases, key=lambda case: case[0])
+
+
+def load_analytical_solutions(
+    station: str, component: str
+) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]:
+    station_config = STATIONS[station]
+    component_name = COMPONENTS[component]["analytical_component"]
+    suffix = station_config["analytical_suffix"]
+
+    viscoelastic_file = (
+        ANALYTICAL_DIR
+        / f"{component_name}_time_analytical_solution_viscoelastic{suffix}.dat"
     )
-    amp_num = np.max(np.abs(num["ux"]))
-
-    an = analytical[("station_1", "ux")]
-    amp_an = np.max(np.abs(an["y"]))
-    scale_factors_num[h] = amp_an / amp_num
-    # scale_factors_an[h] = c1u**2 * rho * 2*np.pi / h**2  # c^2*rho*2pi/h^2
-    scale_factors_an[h] = 1 / rho / h**2
-    print(
-        f"viscoelastic: h={h}, "
-        f"amp_num={amp_num:.4e}, "
-        f"amp_an={amp_an:.4e}, "
-        f"k_num={scale_factors_num[h]:.4e}, "
-        f"k_an={scale_factors_an[h]:.4e}"
+    elastic_file = (
+        ANALYTICAL_DIR
+        / f"{component_name}_time_analytical_solution_elastic{suffix}.dat"
+    )
+    time_viscoelastic, value_viscoelastic = read_two_column_file(viscoelastic_file)
+    time_elastic, value_elastic = read_two_column_file(elastic_file)
+    return (
+        (time_viscoelastic + TIME_SHIFT, value_viscoelastic),
+        (time_elastic + TIME_SHIFT, value_elastic),
     )
 
 
-f0 = 18.0
-t0 = 1.2 / f0
-# сдивг из-за реализации specfem
-t_shift = t0
-error_norms_rect = {}
-error_norms_specfem = {}
-for h in cases_h:
-    rect_dir = RECT_SOL_DIR / f"viscoelastic_schema-h_{h}/result/txt"
-    # k = scale_factors_num[h]
-    # k = scale_factors_an[h]
-    k = 1
-    for station in stations_an.keys():
-        num = read_station_rect(rect_dir / f"{station}.txt")
-        for component in ["ux", "uy"]:
-            t_num = num["T"].to_numpy()
-            u_num = (num[component].to_numpy()* k)
+def calculate_error_norms(
+    numerical_time: np.ndarray,
+    numerical_value: np.ndarray,
+    analytical_time: np.ndarray,
+    analytical_value: np.ndarray,
+) -> dict[str, float]:
+    """Calculate errors on numerical points within the analytical time range."""
+    common = (
+        (numerical_time >= analytical_time.min())
+        & (numerical_time <= analytical_time.max())
+    )
+    if not np.any(common):
+        raise ValueError("Временные диапазоны решений не пересекаются")
 
-            specfem = specfem_sol[(station, component)]
-            t_specfem = specfem[:, 0] + t_shift
-            u_specfem = specfem[:, 1]
-            # решение specfem на сетке численного решения
-            u_specfem_interp = np.interp(t_num, t_specfem, u_specfem,)
-            
-            an = analytical[(station, component)]
-            t_an = an["x"].to_numpy() + t_shift
-            u_an = an["y"].to_numpy()
+    numerical_common = numerical_value[common]
+    analytical_interpolated = np.interp(
+        numerical_time[common], analytical_time, analytical_value
+    )
+    error = numerical_common - analytical_interpolated
+    return {
+        "L1": float(np.mean(np.abs(error))),
+        "L2": float(np.sqrt(np.mean(error**2))),
+        "Linf": float(np.max(np.abs(error))),
+    }
 
-            an_elastic = analytical_elastic[(station, component)]
-            t_an_elastic = an_elastic["x"].to_numpy() + t_shift
-            u_an_elastic = an_elastic["y"].to_numpy()
 
-            # аналитика на сетке численного решения
-            u_an_interp = np.interp(t_num, t_an, u_an,)
-            err = u_num - u_an_interp
-            l1 = np.mean(np.abs(err))
-            l2 = np.sqrt(np.mean(err**2))
-            linf = np.max(np.abs(err))
-            error_norms_rect.setdefault(
-                (station, component),
-                []
-            ).append(
-                {
-                    "h": h,
-                    "L1": l1,
-                    "L2": l2,
-                    "Linf": linf,
-                }
-            )
+def plot_solution(
+    numerical_time: np.ndarray,
+    numerical_value: np.ndarray,
+    analytical_viscoelastic: tuple[np.ndarray, np.ndarray],
+    analytical_elastic: tuple[np.ndarray, np.ndarray],
+    numerical_label: str,
+    title: str,
+    filename: Path,
+) -> None:
+    analytical_time, analytical_value = analytical_viscoelastic
+    common = (
+        (numerical_time >= analytical_time.min())
+        & (numerical_time <= analytical_time.max())
+    )
+    if not np.any(common):
+        raise ValueError("Временные диапазоны решений не пересекаются")
 
-            # аналитика на сетке численного решения specfem
-            u_an_interp_specfem = np.interp(t_specfem, t_an, u_an,)
-            err_specfem = u_specfem - u_an_interp_specfem
-            l1 = np.mean(np.abs(err_specfem))
-            l2 = np.sqrt(np.mean(err_specfem**2))
-            linf = np.max(np.abs(err_specfem))
-            error_norms_specfem.setdefault(
-                (station, component),
-                []
-            ).append(
-                {
-                    "h": h,
-                    "L1": l1,
-                    "L2": l2,
-                    "Linf": linf,
-                }
-            )
+    difference_time = numerical_time[common]
+    analytical_interpolated = np.interp(
+        difference_time, analytical_time, analytical_value
+    )
+    difference = numerical_value[common] - analytical_interpolated
 
-            fig, axes = plt.subplots(
-                1,
-                1,
-                figsize=(8, 6),
-                sharex=True,
-            )
+    fig, (solution_axis, difference_axis) = plt.subplots(
+        2, 1, figsize=(8, 10), sharex=True
+    )
+    solution_axis.plot(numerical_time, numerical_value, label=numerical_label, zorder=4)
+    solution_axis.plot(
+        *analytical_viscoelastic, "--", label="quasi-analytical viscoelastic", zorder=5
+    )
+    solution_axis.plot(
+        *analytical_elastic, "-.", label="quasi-analytical elastic", zorder=3
+    )
+    solution_axis.axhline(0.0, color="black", linewidth=0.8, zorder=2)
+    solution_axis.set_xlabel("t, s")
+    solution_axis.set_ylabel("displacement")
+    solution_axis.tick_params(axis="x", labelbottom=True)
+    solution_axis.grid(True)
+    solution_axis.legend()
+    solution_axis.set_title(title)
 
-            axes.plot(
-                t_num,
-                u_num,
-                label=f"rect h={h}",
-            )
-            # axes.plot(
-            #     t_num,
-            #     u_an_interp,
-            #     "--",
-            #     label="analytical",
-            # )
-            # axes.plot(
-            #     t_num,
-            #     u_specfem_interp,
-            #     ":",
-            #     label="specfem",
-            # )
-            axes.plot(
-                t_an,
-                u_an,
+    difference_axis.plot(
+        difference_time,
+        difference,
+        zorder=3,
+        label="numerical − quasi-analytical viscoelastic",
+    )
+    difference_axis.axhline(0.0, color="black", linewidth=0.8, zorder=2)
+    difference_axis.set_xlabel("t, s")
+    difference_axis.set_ylabel("displacement difference")
+    difference_axis.set_xlim(*TIME_LIMITS)
+    difference_axis.grid(True)
+    difference_axis.legend()
+    difference_axis.set_title("Difference")
+
+    fig.tight_layout()
+    fig.savefig(filename, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Сохранён {filename}")
+
+
+def convergence_fit(
+    x_values: np.ndarray, errors: np.ndarray
+) -> tuple[float, float] | None:
+    valid = (x_values > 0.0) & (errors > 0.0) & np.isfinite(errors)
+    if np.count_nonzero(valid) < 2:
+        return None
+    slope, intercept = np.polyfit(
+        np.log(x_values[valid]), np.log(errors[valid]), 1
+    )
+    return float(slope), float(intercept)
+
+
+def plot_error_graph(
+    rows: list[dict[str, float]],
+    parameter: str,
+    station: str,
+    component: str,
+    solver: str,
+) -> None:
+    rows = sorted(rows, key=lambda row: row[parameter])
+    x_values = np.array([row[parameter] for row in rows], dtype=float)
+
+    fig, axis = plt.subplots(figsize=(7, 5))
+    styles = {"L1": "o-", "L2": "s-", "Linf": "^-"}
+    for norm, style in styles.items():
+        errors = np.array([row[norm] for row in rows], dtype=float)
+        fit = convergence_fit(x_values, errors)
+        label = norm if fit is None else f"{norm} (slope={fit[0]:.2f})"
+        data_line = axis.loglog(x_values, errors, style, label=label)[0]
+        if fit is not None:
+            slope, intercept = fit
+            fitted_errors = np.exp(intercept) * x_values**slope
+            axis.loglog(
+                x_values,
+                fitted_errors,
                 "--",
-                label="analytical",
+                color=data_line.get_color(),
+                linewidth=1.2,
+                label="_nolegend_",
             )
-            axes.plot(
-                t_specfem,
-                u_specfem,
-                ":",
-                label="specfem",
-            )
-            axes.plot(
-                t_an_elastic,
-                u_an_elastic,
-                "-.",
-                label="analytical elastic",
-            )
-            # axes.plot(
-            #     t_num,
-            #     err*10,
-            #     ":",
-            #     label="error*10"
-            # )
-            axes.grid(True)
-            axes.legend()
-            axes.set_ylabel(component)
-            axes.set_xlabel("t, s")
-            axes.set_xlim(0, 0.6)
+            print(f"{solver} {station} {component}: slope({norm})={slope:.3f}")
 
-            fig.suptitle(
-                f"{station}, {component}, h={h}"
-            )
-            fig.tight_layout()
-            outfile = (
-                OUTPUT_DIR /
-                f"{station}-{component}-h_{h}-compare.png"
-            )
-            fig.savefig(
-                outfile,
-                dpi=300,
-                bbox_inches="tight",
-            )
-            plt.close(fig)
-            print(f"Сохранён {outfile}")
+    axis.set_xlabel(parameter)
+    axis.set_ylabel("error norm")
+    axis.grid(True, which="both")
+    axis.legend()
+    axis.set_title(f"{solver}: {station}, {component}")
+    fig.tight_layout()
+    filename = OUTPUT_DIR / f"{solver}-{station}-{component}-error-vs-{parameter}.png"
+    fig.savefig(filename, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Сохранён {filename}")
 
 
-print(f"\nГрафики сходимости")
-for station, component in error_norms_rect:
-    plot_accuracy_graph(error_norms_rect[(station, component)], "-rect")
-    plot_accuracy_graph(error_norms_specfem[(station, component)], "-specfem")
+def process_rect() -> None:
+    cases = discover_rect_cases()
+    if not cases:
+        raise FileNotFoundError(f"Не найдены расчёты RECT в {RECT_SOL_DIR}")
+
+    errors: dict[tuple[str, str], list[dict[str, float]]] = {}
+    for h, case_dir in cases:
+        for station in STATIONS:
+            station_file = case_dir / "result" / "txt" / f"{station}.txt"
+            numerical = read_station_rect(station_file)
+            numerical_time = numerical["T"]
+
+            for component in COMPONENTS:
+                numerical_value = numerical[component]
+                analytical_viscoelastic, analytical_elastic = (
+                    load_analytical_solutions(station, component)
+                )
+                filename = OUTPUT_DIR / (
+                    f"rect-{station}-{component}-h_{h:g}-solution.png"
+                )
+                plot_solution(
+                    numerical_time,
+                    numerical_value,
+                    analytical_viscoelastic,
+                    analytical_elastic,
+                    f"RECT h={h:g}",
+                    f"RECT: {station}, {component}, h={h:g}",
+                    filename,
+                )
+                norms = calculate_error_norms(
+                    numerical_time,
+                    numerical_value,
+                    *analytical_viscoelastic,
+                )
+                errors.setdefault((station, component), []).append(
+                    {"nx": DOMAIN_SIZE_X / h, **norms}
+                )
+
+    for (station, component), rows in errors.items():
+        plot_error_graph(rows, "nx", station, component, "rect")
 
 
+def process_specfem() -> None:
+    cases = discover_specfem_cases()
+    if not cases:
+        raise FileNotFoundError(f"Не найдены расчёты SPECFEM2D в {SPECFEM_SOL_DIR}")
+
+    errors: dict[tuple[str, str], list[dict[str, float]]] = {}
+    for nx, case_dir in cases:
+        for station, station_config in STATIONS.items():
+            station_code = station_config["specfem_station"]
+            for component, component_config in COMPONENTS.items():
+                trace_file = case_dir / "OUTPUT_FILES" / (
+                    f"AA.{station_code}.{component_config['specfem_component']}.semd"
+                )
+                numerical_time, numerical_value = read_two_column_file(trace_file)
+                numerical_time = numerical_time + TIME_SHIFT
+                analytical_viscoelastic, analytical_elastic = (
+                    load_analytical_solutions(station, component)
+                )
+                filename = OUTPUT_DIR / (
+                    f"specfem-{station}-{component}-nx_{nx}-solution.png"
+                )
+                plot_solution(
+                    numerical_time,
+                    numerical_value,
+                    analytical_viscoelastic,
+                    analytical_elastic,
+                    f"SPECFEM2D nx={nx}",
+                    f"SPECFEM2D: {station}, {component}, nx={nx}",
+                    filename,
+                )
+                norms = calculate_error_norms(
+                    numerical_time,
+                    numerical_value,
+                    *analytical_viscoelastic,
+                )
+                errors.setdefault((station, component), []).append(
+                    {"nx": nx, **norms}
+                )
+
+    for (station, component), rows in errors.items():
+        plot_error_graph(rows, "nx", station, component, "specfem")
+
+
+def main() -> None:
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    process_rect()
+    process_specfem()
+
+
+if __name__ == "__main__":
+    main()
