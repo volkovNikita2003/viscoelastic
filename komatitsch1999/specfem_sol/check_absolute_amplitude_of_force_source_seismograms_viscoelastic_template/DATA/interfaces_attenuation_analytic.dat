@@ -15,8 +15,8 @@
 # interface number 2
 #
  2
-    0 2000
- 5000 2000
+    0 2500
+ 5000 2500
 # for each layer, we give the number of spectral elements in the vertical direction
 #
 #

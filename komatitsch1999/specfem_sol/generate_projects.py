@@ -16,11 +16,11 @@ TEMPLATE_DIR = BASE_DIR / (
 PROJECT_NAME_PREFIX = (
     "check_absolute_amplitude_of_force_source_seismograms_viscoelastic_auto"
 )
-NX_VALUES = (22, 44, 88)
+NX_VALUES = (100,)
 CFL = 0.5
 VP = 3297.8490000000002
-T_TOTAL_S = 1.0
-DOMAIN_SIZE_M = 2000.0
+T_TOTAL_S = 0.65
+DOMAIN_SIZE_M = 2500.0
 SPECTRAL_POLYNOMIAL_DEGREE = 4
 
 TEMPLATE_FILES = (

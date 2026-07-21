@@ -178,8 +178,8 @@ rec_normal_to_surface           = .false.        # base anglerec normal to surfa
 
 # first receiver set (repeat these 6 lines and adjust nreceiversets accordingly)
 nrec                            = 1              # number of receivers
-xdeb                            = 1500.d0
-zdeb                            = 1500.d0
+xdeb                            = 1750.d0
+zdeb                            = 1750.d0
 xfin                            = 99999.d0       # ignored because only one receiver
 zfin                            = 99999.d0       # ignored because only one receiver
 record_at_surface_same_vertical = .false.        # receivers inside the medium or at the surface (z values are ignored if this is set to true, they are replaced with the topography height)
@@ -289,13 +289,13 @@ interfacesfile                  = interfaces_attenuation_analytic.dat
 
 # geometry of the model (origin lower-left corner = 0,0) and mesh description
 xmin                            = 0.d0           # abscissa of left side of the model
-xmax                            = 2000.d0        # abscissa of right side of the model
+xmax                            = 2500.d0        # abscissa of right side of the model
 nx                              = {nx}           # number of elements along X
 
 # absorbing boundary parameters (see absorbing_conditions above)
 absorbbottom                    = .true.
 absorbright                     = .true.
-absorbtop                       = .true.
+absorbtop                       = .false.
 absorbleft                      = .true.
 
 # define the different regions of the model in the (nx,nz) spectral-element mesh
