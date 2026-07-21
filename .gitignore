@@ -30,5 +30,5 @@ komatitsch1999/rect_sol_old
 komatitsch1999/specfem_sol/bin
 komatitsch1999/specfem_sol/check_absolute_amplitude_of_force_source_seismograms_viscoelastic_auto*
 komatitsch1999/specfem_sol/calc_specfem.sh
-komatitsch1999/specfem_sol/clear_specfem.sh
+komatitsch1999/specfem_sol/clean_specfem.sh
 

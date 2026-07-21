@@ -151,7 +151,8 @@ rho = 2000
 
 # ----- аналитическое решение -----
 print(f"Аналитическое решение")
-ANALYTICAL_DIR = BASE_DIR / "specfem_sol"
+ANALYTICAL_DIR = BASE_DIR / "analytical_sol"
+SPECFEM_DIR = BASE_DIR / "specfem_sol/check_absolute_amplitude_of_force_source_seismograms_viscoelastic_auto_nx_88"
 
 
 
@@ -206,8 +207,8 @@ for station, suffix in stations_an.items():
     analytical_elastic[(station, "ux")] = ux
     analytical_elastic[(station, "uy")] = uy
 
-    ux = np.loadtxt(ANALYTICAL_DIR/"OUTPUT_FILES/AA.S0001.BXX.semd")
-    uy = np.loadtxt(ANALYTICAL_DIR/"OUTPUT_FILES/AA.S0001.BXZ.semd")
+    ux = np.loadtxt(SPECFEM_DIR/"OUTPUT_FILES/AA.S0001.BXX.semd")
+    uy = np.loadtxt(SPECFEM_DIR/"OUTPUT_FILES/AA.S0001.BXZ.semd")
     specfem_sol[(station, "ux")] = ux
     specfem_sol[(station, "uy")] = uy
 
@@ -354,7 +355,7 @@ for h in cases_h:
             axes.legend()
             axes.set_ylabel(component)
             axes.set_xlabel("t, s")
-            axes.set_xlim(0, 0.5)
+            axes.set_xlim(0, 0.6)
 
             fig.suptitle(
                 f"{station}, {component}, h={h}"
