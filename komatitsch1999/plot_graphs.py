@@ -3,33 +3,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def velocity_to_displacement(df):
-    t = df["T"].to_numpy()
-    ux = np.zeros_like(t)
-    uy = np.zeros_like(t)
-    dt = np.diff(t)
-    ux[1:] = np.cumsum(
-        0.5 * (df["vx"].to_numpy()[:-1] + df["vx"].to_numpy()[1:]) * dt
-    )
-    uy[1:] = np.cumsum(
-        0.5 * (df["vy"].to_numpy()[:-1] + df["vy"].to_numpy()[1:]) * dt
-    )
-    return ux, uy
 
-
-BASE_DIR = Path(__file__).parent
-OUTPUT_DIR = BASE_DIR / "graphs"
-OUTPUT_DIR.mkdir(exist_ok=True)
-cases_h = [10, 4, 2, 1, 0.5, 0.25]
-# c1u = 3297.849
-rho = 2000
-
-
-# ----- аналитическое решение -----
-print(f"Аналитическое решение")
-ANALYTICAL_DIR = BASE_DIR / "specfem_sol"
-
-def read_two_columns(filename):
+def read_an_sol(filename):
     return pd.read_csv(
         filename,
         sep=r"\s+",
@@ -38,35 +13,8 @@ def read_two_columns(filename):
         engine="python",
     )
 
-# stations_an = {
-#     "_500.0_500.0": "station_1",
-#     "_0.0_500.0": "station_2",
-#     "_500.0_0.0": "station_3",
-#     "_-500.0_500.0": "station_4",
-# }
 
-analytical_files = [
-    "spectrum_of_the_source_used.gnu",
-]
-# analytical_files += [f"Vx_time_analytical_solution_viscoelastic{i}.dat" for i in stations_an.keys()]
-# analytical_files += [f"Vz_time_analytical_solution_viscoelastic{i}.dat" for i in stations_an.keys()]
-
-analytical_files += [f"Ux_time_analytical_solution_viscoelastic.dat"]
-analytical_files += [f"Uz_time_analytical_solution_viscoelastic.dat"]
-
-# ----- RECT -----
-print(f"\nЧисленное решение")
-RECT_SOL_DIR = BASE_DIR / "rect_sol"
-
-# def read_station(filename):
-#     return pd.read_csv(
-#         filename,
-#         sep=r"\s+",
-#         comment="#",
-#         names=["T", "vx", "vy", "sxx", "syy", "sxy"],
-#         engine="python",
-#     )
-def read_station(filename):
+def read_station_rect(filename):
     df = pd.read_csv(
         filename,
         sep=r"\s+",
@@ -97,174 +45,8 @@ def read_station(filename):
     return df
 
 
-# ----- сравнение численного и аналитического решений -----
-print(f"\nСравнение численного и аналитического решений")
-
-stations_an = {
-    "station_1": "",
-    # "station_2": "_0.0_500.0",
-    # "station_3": "_500.0_0.0",
-    # "station_4": "_-500.0_500.0",
-}
-
-analytical = {}
-specfem_sol = {}
-
-for station, suffix in stations_an.items():
-    ux = read_two_columns(
-        ANALYTICAL_DIR /
-        f"Ux_time_analytical_solution_viscoelastic{suffix}.dat"
-    )
-    uy = read_two_columns(
-        ANALYTICAL_DIR /
-        f"Uz_time_analytical_solution_viscoelastic{suffix}.dat"
-    )
-    analytical[(station, "ux")] = ux
-    analytical[(station, "uy")] = uy
-
-    ux = np.loadtxt(ANALYTICAL_DIR/"OUTPUT_FILES/AA.S0001.BXX.semd")
-    uy = np.loadtxt(ANALYTICAL_DIR/"OUTPUT_FILES/AA.S0001.BXZ.semd")
-    specfem_sol[(station, "ux")] = ux
-    specfem_sol[(station, "uy")] = uy
-
-
-scale_factors_num = {}
-scale_factors_an = {}
-for h in cases_h:
-    rect_dir = RECT_SOL_DIR / f"viscoelastic_schema-h_{h}/result/txt"
-    num = read_station(
-        rect_dir / "station_1.txt"
-    )
-    amp_num = np.max(np.abs(num["ux"]))
-
-    an = analytical[("station_1", "ux")]
-    amp_an = np.max(np.abs(an["y"]))
-    scale_factors_num[h] = amp_an / amp_num
-    # scale_factors_an[h] = c1u**2 * rho * 2*np.pi / h**2  # c^2*rho*2pi/h^2
-    scale_factors_an[h] = 1 / rho / h**2
-    print(
-        f"viscoelastic: h={h}, "
-        f"amp_num={amp_num:.4e}, "
-        f"amp_an={amp_an:.4e}, "
-        f"k_num={scale_factors_num[h]:.4e}, "
-        f"k_an={scale_factors_an[h]:.4e}"
-    )
-
-
-f0 = 18.0
-t0 = 1.2 / f0
-# сдивг из-за реализации specfem
-t_shift = t0
-error_norms = {}
-for h in cases_h:
-    rect_dir = RECT_SOL_DIR / f"viscoelastic_schema-h_{h}/result/txt"
-    # k = scale_factors_num[h]
-    # k = scale_factors_an[h]
-    k = 1
-    for station in stations_an.keys():
-        num = read_station(rect_dir / f"{station}.txt")
-        num_ux, num_uy = velocity_to_displacement(num)
-        for component in ["ux", "uy"]:
-            t_num = num["T"].to_numpy()
-            u_num = (num[component].to_numpy()* k)
-
-            specfem = specfem_sol[(station, component)]
-            t_specfem = specfem[:, 0] + t_shift
-            u_specfem = specfem[:, 1]
-            # решение specfem на сетке численного решения
-            u_specfem_interp = np.interp(t_num, t_specfem, u_specfem,)
-            
-            an = analytical[(station, component)]
-            t_an = an["x"].to_numpy() + t_shift
-            u_an = an["y"].to_numpy()
-            # аналитика на сетке численного решения
-            u_an_interp = np.interp(t_num, t_an, u_an,)
-            err = u_num - u_an_interp
-
-            l1 = np.mean(np.abs(err))
-            l2 = np.sqrt(np.mean(err**2))
-            linf = np.max(np.abs(err))
-
-            error_norms.setdefault(
-                (station, component),
-                []
-            ).append(
-                {
-                    "h": h,
-                    "L1": l1,
-                    "L2": l2,
-                    "Linf": linf,
-                }
-            )
-
-            fig, axes = plt.subplots(
-                1,
-                1,
-                figsize=(8, 6),
-                sharex=True,
-            )
-
-            axes.plot(
-                t_num,
-                u_num,
-                label=f"rect h={h}",
-            )
-            # axes.plot(
-            #     t_num,
-            #     u_an_interp,
-            #     "--",
-            #     label="analytical",
-            # )
-            # axes.plot(
-            #     t_num,
-            #     u_specfem_interp,
-            #     ":",
-            #     label="specfem",
-            # )
-            axes.plot(
-                t_an,
-                u_an,
-                "--",
-                label="analytical",
-            )
-            axes.plot(
-                t_specfem,
-                u_specfem,
-                ":",
-                label="specfem",
-            )
-            # axes.plot(
-            #     t_num,
-            #     err*10,
-            #     ":",
-            #     label="error*10"
-            # )
-            axes.grid(True)
-            axes.legend()
-            axes.set_ylabel(component)
-            axes.set_xlabel("t, s")
-            axes.set_xlim(0, 0.5)
-
-            fig.suptitle(
-                f"{station}, {component}, h={h}"
-            )
-            fig.tight_layout()
-            outfile = (
-                OUTPUT_DIR /
-                f"{station}-{component}-h_{h}-compare.png"
-            )
-            fig.savefig(
-                outfile,
-                dpi=300,
-                bbox_inches="tight",
-            )
-            plt.close(fig)
-            print(f"Сохранён {outfile}")
-
-
-print(f"\nГрафики сходимости")
-for station, component in error_norms:
-    rows = error_norms[(station, component)]
+def plot_accuracy_graph(error_norms, filename_suffix=""):
+    rows = error_norms
     rows = sorted(
         rows,
         key=lambda x: x["h"]
@@ -346,7 +128,7 @@ for station, component in error_norms:
         f"{station} {component}"
     )
 
-    outfile = OUTPUT_DIR / f"{station}-{component}-error-norms.png"
+    outfile = OUTPUT_DIR / f"{station}-{component}-error-norms{filename_suffix}.png"
     plt.savefig(
         outfile,
         dpi=300,
@@ -355,5 +137,245 @@ for station, component in error_norms:
     plt.close()
     print(f"Сохранён {outfile}")
 
+
+
+
+
+BASE_DIR = Path(__file__).parent
+OUTPUT_DIR = BASE_DIR / "graphs"
+OUTPUT_DIR.mkdir(exist_ok=True)
+cases_h = [10, 4, 2, 1, 0.5, 0.25]
+# c1u = 3297.849
+rho = 2000
+
+
+# ----- аналитическое решение -----
+print(f"Аналитическое решение")
+ANALYTICAL_DIR = BASE_DIR / "specfem_sol"
+
+
+
+# stations_an = {
+#     "_500.0_500.0": "station_1",
+#     "_0.0_500.0": "station_2",
+#     "_500.0_0.0": "station_3",
+#     "_-500.0_500.0": "station_4",
+# }
+
+# analytical_files = [
+#     "spectrum_of_the_source_used.gnu",
+# ]
+# # analytical_files += [f"Vx_time_analytical_solution_viscoelastic{i}.dat" for i in stations_an.keys()]
+# # analytical_files += [f"Vz_time_analytical_solution_viscoelastic{i}.dat" for i in stations_an.keys()]
+
+# analytical_files += [f"Ux_time_analytical_solution_viscoelastic.dat"]
+# analytical_files += [f"Uz_time_analytical_solution_viscoelastic.dat"]
+
+# analytical_files_elastic = [
+#     f"Ux_time_analytical_solution_elastic.dat",
+#     f"Uz_time_analytical_solution_elastic.dat"
+# ]
+
+# ----- RECT -----
+print(f"\nЧисленное решение")
+RECT_SOL_DIR = BASE_DIR / "rect_sol"
+
+
+# ----- сравнение численного и аналитического решений -----
+print(f"\nСравнение численного и аналитического решений")
+
+stations_an = {
+    "station_1": "",
+    # "station_2": "_0.0_500.0",
+    # "station_3": "_500.0_0.0",
+    # "station_4": "_-500.0_500.0",
+}
+
+analytical = {}
+analytical_elastic = {}
+specfem_sol = {}
+
+for station, suffix in stations_an.items():
+    ux = read_an_sol(ANALYTICAL_DIR / f"Ux_time_analytical_solution_viscoelastic{suffix}.dat")
+    uy = read_an_sol(ANALYTICAL_DIR / f"Uz_time_analytical_solution_viscoelastic{suffix}.dat")
+    analytical[(station, "ux")] = ux
+    analytical[(station, "uy")] = uy
+
+    ux = read_an_sol(ANALYTICAL_DIR / f"Ux_time_analytical_solution_elastic{suffix}.dat")
+    uy = read_an_sol(ANALYTICAL_DIR / f"Uz_time_analytical_solution_elastic{suffix}.dat")
+    analytical_elastic[(station, "ux")] = ux
+    analytical_elastic[(station, "uy")] = uy
+
+    ux = np.loadtxt(ANALYTICAL_DIR/"OUTPUT_FILES/AA.S0001.BXX.semd")
+    uy = np.loadtxt(ANALYTICAL_DIR/"OUTPUT_FILES/AA.S0001.BXZ.semd")
+    specfem_sol[(station, "ux")] = ux
+    specfem_sol[(station, "uy")] = uy
+
+
+scale_factors_num = {}
+scale_factors_an = {}
+for h in cases_h:
+    rect_dir = RECT_SOL_DIR / f"viscoelastic_schema-h_{h}/result/txt"
+    num = read_station_rect(
+        rect_dir / "station_1.txt"
+    )
+    amp_num = np.max(np.abs(num["ux"]))
+
+    an = analytical[("station_1", "ux")]
+    amp_an = np.max(np.abs(an["y"]))
+    scale_factors_num[h] = amp_an / amp_num
+    # scale_factors_an[h] = c1u**2 * rho * 2*np.pi / h**2  # c^2*rho*2pi/h^2
+    scale_factors_an[h] = 1 / rho / h**2
+    print(
+        f"viscoelastic: h={h}, "
+        f"amp_num={amp_num:.4e}, "
+        f"amp_an={amp_an:.4e}, "
+        f"k_num={scale_factors_num[h]:.4e}, "
+        f"k_an={scale_factors_an[h]:.4e}"
+    )
+
+
+f0 = 18.0
+t0 = 1.2 / f0
+# сдивг из-за реализации specfem
+t_shift = t0
+error_norms_rect = {}
+error_norms_specfem = {}
+for h in cases_h:
+    rect_dir = RECT_SOL_DIR / f"viscoelastic_schema-h_{h}/result/txt"
+    # k = scale_factors_num[h]
+    # k = scale_factors_an[h]
+    k = 1
+    for station in stations_an.keys():
+        num = read_station_rect(rect_dir / f"{station}.txt")
+        for component in ["ux", "uy"]:
+            t_num = num["T"].to_numpy()
+            u_num = (num[component].to_numpy()* k)
+
+            specfem = specfem_sol[(station, component)]
+            t_specfem = specfem[:, 0] + t_shift
+            u_specfem = specfem[:, 1]
+            # решение specfem на сетке численного решения
+            u_specfem_interp = np.interp(t_num, t_specfem, u_specfem,)
+            
+            an = analytical[(station, component)]
+            t_an = an["x"].to_numpy() + t_shift
+            u_an = an["y"].to_numpy()
+
+            an_elastic = analytical_elastic[(station, component)]
+            t_an_elastic = an_elastic["x"].to_numpy() + t_shift
+            u_an_elastic = an_elastic["y"].to_numpy()
+
+            # аналитика на сетке численного решения
+            u_an_interp = np.interp(t_num, t_an, u_an,)
+            err = u_num - u_an_interp
+            l1 = np.mean(np.abs(err))
+            l2 = np.sqrt(np.mean(err**2))
+            linf = np.max(np.abs(err))
+            error_norms_rect.setdefault(
+                (station, component),
+                []
+            ).append(
+                {
+                    "h": h,
+                    "L1": l1,
+                    "L2": l2,
+                    "Linf": linf,
+                }
+            )
+
+            # аналитика на сетке численного решения specfem
+            u_an_interp_specfem = np.interp(t_specfem, t_an, u_an,)
+            err_specfem = u_specfem - u_an_interp_specfem
+            l1 = np.mean(np.abs(err_specfem))
+            l2 = np.sqrt(np.mean(err_specfem**2))
+            linf = np.max(np.abs(err_specfem))
+            error_norms_specfem.setdefault(
+                (station, component),
+                []
+            ).append(
+                {
+                    "h": h,
+                    "L1": l1,
+                    "L2": l2,
+                    "Linf": linf,
+                }
+            )
+
+            fig, axes = plt.subplots(
+                1,
+                1,
+                figsize=(8, 6),
+                sharex=True,
+            )
+
+            axes.plot(
+                t_num,
+                u_num,
+                label=f"rect h={h}",
+            )
+            # axes.plot(
+            #     t_num,
+            #     u_an_interp,
+            #     "--",
+            #     label="analytical",
+            # )
+            # axes.plot(
+            #     t_num,
+            #     u_specfem_interp,
+            #     ":",
+            #     label="specfem",
+            # )
+            axes.plot(
+                t_an,
+                u_an,
+                "--",
+                label="analytical",
+            )
+            axes.plot(
+                t_specfem,
+                u_specfem,
+                ":",
+                label="specfem",
+            )
+            axes.plot(
+                t_an_elastic,
+                u_an_elastic,
+                "-.",
+                label="analytical elastic",
+            )
+            # axes.plot(
+            #     t_num,
+            #     err*10,
+            #     ":",
+            #     label="error*10"
+            # )
+            axes.grid(True)
+            axes.legend()
+            axes.set_ylabel(component)
+            axes.set_xlabel("t, s")
+            axes.set_xlim(0, 0.5)
+
+            fig.suptitle(
+                f"{station}, {component}, h={h}"
+            )
+            fig.tight_layout()
+            outfile = (
+                OUTPUT_DIR /
+                f"{station}-{component}-h_{h}-compare.png"
+            )
+            fig.savefig(
+                outfile,
+                dpi=300,
+                bbox_inches="tight",
+            )
+            plt.close(fig)
+            print(f"Сохранён {outfile}")
+
+
+print(f"\nГрафики сходимости")
+for station, component in error_norms_rect:
+    plot_accuracy_graph(error_norms_rect[(station, component)], "-rect")
+    plot_accuracy_graph(error_norms_specfem[(station, component)], "-specfem")
 
 

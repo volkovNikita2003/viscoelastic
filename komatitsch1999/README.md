@@ -1,0 +1,1 @@
+Рассматривается задача распространения волн в пространстве. Реализация specfem основана на примере check_absolute_amplitude_of_force_source_seismograms_viscoelastic
