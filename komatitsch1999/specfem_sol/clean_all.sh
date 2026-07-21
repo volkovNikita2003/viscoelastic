@@ -14,7 +14,7 @@ for project in "${generated_projects[@]}"; do
     fi
 done
 
-for generated_script in calc_specfem.sh clear_specfem.sh; do
+for generated_script in calc_specfem.sh clean_specfem.sh; do
     generated_path="$SCRIPT_DIR/$generated_script"
     if [[ -f "$generated_path" ]]; then
         echo "Удаление автоматически созданного файла: $generated_path"
