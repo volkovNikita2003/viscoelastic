@@ -11,7 +11,7 @@ DIR_TEMPLATE = Path("templates")
 DIR_RECT = Path("~/rect_git/rect/build/")
 
 # количество отрезков (элементов) по направлению X
-NX_VALUES = (500, 400, 300, 250)
+NX_VALUES = (200, 400, 800, 1000, 2000, 4000, 8000)
 
 RHO = 2000
 VP = 3297.849
@@ -21,9 +21,25 @@ F0 = 18.0
 T0 = 1.2 / F0
 
 CFL = 0.5
-T_TOTAL_S = 0.65
-DOMAIN_SIZE_M = 2500.0
+T_TOTAL_S = 0.6
+DOMAIN_SIZE_M = 4000.
 TIMING_PROJECT_SUFFIX = "_timing"
+OMP_NUM_THREADS = 1
+RECEIVER_OFFSET_M = 500.0
+
+SOURCE_COORD_M = np.array(
+    [DOMAIN_SIZE_M / 2, DOMAIN_SIZE_M / 2], dtype=np.float64
+)
+RECEIVERS = (
+    {"name": "station_1", "coord_m": SOURCE_COORD_M + [RECEIVER_OFFSET_M, RECEIVER_OFFSET_M]},
+    {"name": "station_2", "coord_m": SOURCE_COORD_M + [0.0, RECEIVER_OFFSET_M]},
+    {"name": "station_3", "coord_m": SOURCE_COORD_M + [-RECEIVER_OFFSET_M, RECEIVER_OFFSET_M]},
+    {"name": "station_4", "coord_m": SOURCE_COORD_M + [-RECEIVER_OFFSET_M, 0.0]},
+    {"name": "station_5", "coord_m": SOURCE_COORD_M + [-RECEIVER_OFFSET_M, -RECEIVER_OFFSET_M]},
+    {"name": "station_6", "coord_m": SOURCE_COORD_M + [0.0, -RECEIVER_OFFSET_M]},
+    {"name": "station_7", "coord_m": SOURCE_COORD_M + [RECEIVER_OFFSET_M, -RECEIVER_OFFSET_M]},
+    {"name": "station_8", "coord_m": SOURCE_COORD_M + [RECEIVER_OFFSET_M, 0.0]},
+)
 
 
 params_base = {
@@ -32,15 +48,15 @@ params_base = {
     "grid_spacing": None,
     "grid_size": None,
     "grid_origin": np.array([0, 0], dtype=np.float64),
-    "impulse_coord_m": np.array([1250, 1250], dtype=np.float64),
+    "impulse_coord_m": SOURCE_COORD_M,
     "impulse_index": None,
     "force_coef": None,
     "save_vtk_num": 10,
     "save_vtk": None,
-    "station_1_coord_m": np.array([1750, 1750], dtype=np.float64),
-    # "station_2_coord_m": np.array([0, 500], dtype=int),
-    # "station_3_coord_m": np.array([500, 0], dtype=int),
-    # "station_4_coord_m": np.array([-500, 500], dtype=int)
+    **{
+        f"{receiver['name']}_coord_m": receiver["coord_m"]
+        for receiver in RECEIVERS
+    },
 }
 
 
@@ -118,6 +134,14 @@ def get_point_index(
 def get_case_params(nx):
     if not isinstance(nx, int):
         raise TypeError("nx must be integer")
+    for receiver in RECEIVERS:
+        coord = np.asarray(receiver["coord_m"])
+        if np.any(coord < 0.0) or np.any(coord > DOMAIN_SIZE_M):
+            raise ValueError(
+                f"Receiver {receiver['name']} at {coord.tolist()} is outside "
+                f"the domain [0, {DOMAIN_SIZE_M}] x [0, {DOMAIN_SIZE_M}]"
+            )
+
     h = DOMAIN_SIZE_M / nx
     grid_size = nx + 1
     dt = CFL * h / VP
@@ -151,6 +175,7 @@ def convert_params_to_format_dict(params: dict):
         "impulse_index": f"{params['impulse_index'][0]}, {params['impulse_index'][1]}, 0",
         "save_vtk": params["save_vtk"],
         "force_coef": params["force_coef"],
+        "station_savers": format_station_savers(params),
     }
 
     station_pattern = re.compile(r"station_(\d+)")
@@ -172,6 +197,36 @@ def convert_params_to_format_dict(params: dict):
         )
     
     return format_params
+
+
+def format_station_savers(params: dict) -> str:
+    station_pattern = re.compile(r"station_(\d+)")
+    station_keys = sorted(
+        (
+            (int(match.group(1)), key)
+            for key in params
+            if (match := station_pattern.fullmatch(key))
+        ),
+        key=lambda item: item[0],
+    )
+
+    blocks = []
+    for _, station_name in station_keys:
+        station_index = params[station_name]
+        index = f"{station_index[0]}, {station_index[1]}, 0"
+        blocks.append(
+            f"""    [saver]
+        name = SinglePointSaver
+        path = result/txt/{station_name}.txt
+        order = 1
+        save = 1
+        params = vx, vy, sxx, syy, sxy
+        norms = 0, 0, 0, 0, 0
+        index = {index}
+        eps = 1e-6
+    [/saver]"""
+        )
+    return "\n".join(blocks)
 
 
 def write_script(path: Path, contents: str) -> None:
@@ -348,7 +403,7 @@ for project in "${{TIMING_PROJECTS[@]}}"; do
     cd "$SCRIPT_DIR/$project"
     config_name="${{project%{TIMING_PROJECT_SUFFIX}}}.conf"
     echo "Запуск замера времени в $PWD"
-    {{ time "$RECT_EXECUTABLE" "$config_name" > log_run.txt 2>&1; }} 2> timing.txt
+    {{ time OMP_NUM_THREADS={OMP_NUM_THREADS} "$RECT_EXECUTABLE" "$config_name" > log_run.txt 2>&1; }} 2> timing.txt
     echo "Замер завершен. Результат: $PWD/timing.txt"
     cat timing.txt
 done

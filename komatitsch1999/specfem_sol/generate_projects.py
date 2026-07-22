@@ -17,16 +17,31 @@ TEMPLATE_DIR = BASE_DIR / (
 PROJECT_NAME_PREFIX = (
     "check_absolute_amplitude_of_force_source_seismograms_viscoelastic_auto"
 )
-NX_VALUES = (100, 80, 60, 50)
+NX_VALUES = (40, 80, 160, 200, 400, 800, 1600)
 CFL = 0.5
 VP = 3297.849
-T_TOTAL_S = 0.65
-DOMAIN_SIZE_M = 2500.0
+T_TOTAL_S = 0.6
+DOMAIN_SIZE_M = 4000.0
 SPECTRAL_POLYNOMIAL_DEGREE = 4
 TIMING_PROJECT_SUFFIX = "_timing"
+RECEIVER_OFFSET_M = 500.0
+
+SOURCE_X_M = DOMAIN_SIZE_M / 2
+SOURCE_Z_M = DOMAIN_SIZE_M / 2
+RECEIVERS = (
+    {"name": "station_1", "x": SOURCE_X_M + RECEIVER_OFFSET_M, "z": SOURCE_Z_M + RECEIVER_OFFSET_M},
+    {"name": "station_2", "x": SOURCE_X_M,                     "z": SOURCE_Z_M + RECEIVER_OFFSET_M},
+    {"name": "station_3", "x": SOURCE_X_M - RECEIVER_OFFSET_M, "z": SOURCE_Z_M + RECEIVER_OFFSET_M},
+    {"name": "station_4", "x": SOURCE_X_M - RECEIVER_OFFSET_M, "z": SOURCE_Z_M                    },
+    {"name": "station_5", "x": SOURCE_X_M - RECEIVER_OFFSET_M, "z": SOURCE_Z_M - RECEIVER_OFFSET_M},
+    {"name": "station_6", "x": SOURCE_X_M,                     "z": SOURCE_Z_M - RECEIVER_OFFSET_M},
+    {"name": "station_7", "x": SOURCE_X_M + RECEIVER_OFFSET_M, "z": SOURCE_Z_M - RECEIVER_OFFSET_M},
+    {"name": "station_8", "x": SOURCE_X_M + RECEIVER_OFFSET_M, "z": SOURCE_Z_M                    },
+)
 
 TEMPLATE_FILES = (
     "Par_file_no_attenuation_2D_at_the_corner_between_several_spectral_elements",
+    "SOURCE_no_attenuation_2D_at_the_corner_between_several_spectral_elements",
     "interfaces_attenuation_analytic.dat",
 )
 
@@ -75,11 +90,57 @@ def calculate_min_gll_distance(h_se: float, degree: int) -> float:
     return float(np.min(np.diff(element_points)))
 
 
-def calculate_parameters(nx: int) -> dict[str, int | float]:
+def format_fortran_double(value: float) -> str:
+    """Format a Python number as a Fortran double-precision literal."""
+    text = format(float(value), ".17g")
+    if "e" in text.lower():
+        return text.lower().replace("e", "d")
+    if "." in text:
+        return f"{text}d0"
+    return f"{text}.d0"
+
+
+def format_receiver_sets(receivers: tuple[dict[str, str | float], ...]) -> str:
+    blocks = []
+    for number, receiver in enumerate(receivers, start=1):
+        x = format_fortran_double(float(receiver["x"]))
+        z = format_fortran_double(float(receiver["z"]))
+        blocks.append(
+            f"""# receiver set {number}: {receiver['name']}
+nrec                            = 1
+xdeb                            = {x}
+zdeb                            = {z}
+xfin                            = {x}
+zfin                            = {z}
+record_at_surface_same_vertical = .false."""
+        )
+    return "\n\n".join(blocks)
+
+
+def calculate_parameters(nx: int) -> dict[str, int | float | str]:
+    if not isinstance(nx, int) or isinstance(nx, bool):
+        raise TypeError("nx must be an integer")
+    if nx <= 0:
+        raise ValueError("nx must be positive")
+    if nx % 2 != 0:
+        raise ValueError(
+            "nx must be even so that the source at the center of the domain "
+            "lies at the corner shared by four spectral elements"
+        )
+
     h_se = DOMAIN_SIZE_M / nx  # h of spectral element
     h_min = calculate_min_gll_distance(h_se, SPECTRAL_POLYNOMIAL_DEGREE)
     dt = CFL * h_min / VP
-    nstep = math.ceil(T_TOTAL_S / dt)
+    nstep = math.ceil(T_TOTAL_S / dt) + 1
+    for receiver in RECEIVERS:
+        x = float(receiver["x"])
+        z = float(receiver["z"])
+        if not (0.0 <= x <= DOMAIN_SIZE_M and 0.0 <= z <= DOMAIN_SIZE_M):
+            raise ValueError(
+                f"Receiver {receiver['name']} ({x}, {z}) is outside the "
+                f"domain [0, {DOMAIN_SIZE_M}] x [0, {DOMAIN_SIZE_M}]"
+            )
+
     return {
         "NSTEP": nstep,
         "DT": dt,
@@ -90,10 +151,15 @@ def calculate_parameters(nx: int) -> dict[str, int | float]:
         "NTSTEP_BETWEEN_OUTPUT_IMAGES": nstep // 10,
         "h_se": h_se,
         "h_min": h_min,
+        "domain_size": DOMAIN_SIZE_M,
+        "xs": SOURCE_X_M,
+        "zs": SOURCE_Z_M,
+        "nreceiversets": len(RECEIVERS),
+        "receiver_sets": format_receiver_sets(RECEIVERS),
     }
 
 
-def format_template(path: Path, parameters: dict[str, int | float]) -> None:
+def format_template(path: Path, parameters: dict[str, int | float | str]) -> None:
     """Replace ``str.format`` fields in a copied template file."""
     contents = path.read_text(encoding="utf-8")
     path.write_text(contents.format(**parameters), encoding="utf-8")

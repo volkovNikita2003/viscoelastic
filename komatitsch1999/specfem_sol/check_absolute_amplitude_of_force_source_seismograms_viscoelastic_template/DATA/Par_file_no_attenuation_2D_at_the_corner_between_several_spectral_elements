@@ -170,19 +170,13 @@ SU_FORMAT                       = .false.        # output single precision binar
 use_existing_STATIONS           = .false.
 
 # number of receiver sets (i.e. number of receiver lines to create below)
-nreceiversets                   = 1
+nreceiversets                   = {nreceiversets}
 
 # orientation
 anglerec                        = 0.d0           # angle to rotate components at receivers
 rec_normal_to_surface           = .false.        # base anglerec normal to surface (external mesh and curve file needed)
 
-# first receiver set (repeat these 6 lines and adjust nreceiversets accordingly)
-nrec                            = 1              # number of receivers
-xdeb                            = 1750.d0
-zdeb                            = 1750.d0
-xfin                            = 99999.d0       # ignored because only one receiver
-zfin                            = 99999.d0       # ignored because only one receiver
-record_at_surface_same_vertical = .false.        # receivers inside the medium or at the surface (z values are ignored if this is set to true, they are replaced with the topography height)
+{receiver_sets}
 
 
 #-----------------------------------------------------------
@@ -289,7 +283,7 @@ interfacesfile                  = interfaces_attenuation_analytic.dat
 
 # geometry of the model (origin lower-left corner = 0,0) and mesh description
 xmin                            = 0.d0           # abscissa of left side of the model
-xmax                            = 2500.d0        # abscissa of right side of the model
+xmax                            = {domain_size}        # abscissa of right side of the model
 nx                              = {nx}           # number of elements along X
 
 # absorbing boundary parameters (see absorbing_conditions above)
@@ -421,4 +415,3 @@ BROADCAST_SAME_MESH_AND_MODEL   = .true.
 
 # set to true to use GPUs
 GPU_MODE                        = .false.
-

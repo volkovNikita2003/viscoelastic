@@ -18,7 +18,7 @@
 !! DK DK Dimitri Komatitsch, CNRS Marseille, France, April 2017: added the elastic reference calculation.
 
 ! compute the non-viscoacoustic case as a reference if needed, i.e. turn attenuation off
-  logical, parameter :: TURN_ATTENUATION_OFF = .true.
+  logical, parameter :: TURN_ATTENUATION_OFF = .false.
 
 ! to see how small the contribution of the near-field term is,
 ! here the user can ask not to include it, to then compare with the full result obtained with this flag set to false
@@ -39,7 +39,7 @@
   double precision, parameter :: pi = 3.141592653589793d0
 
 ! for the solution in time domain
-  integer it,i
+  integer it,i,ireceiver
   real wsave(4*nt+15)
   complex c(nt)
 
@@ -65,6 +65,12 @@
 
 ! definition position recepteur Carcione
   double precision x1,x2
+  integer, parameter :: nreceivers = 8
+  double precision, dimension(nreceivers), parameter :: receiver_x = &
+    (/ 500.d0, 0.d0, -500.d0, -500.d0, -500.d0, 0.d0, 500.d0, 500.d0 /)
+  double precision, dimension(nreceivers), parameter :: receiver_z = &
+    (/ 500.d0, 500.d0, 500.d0, 0.d0, -500.d0, -500.d0, -500.d0, 0.d0 /)
+  character(len=256) :: output_filename
 
 ! Definition source Dimitri
   double precision, parameter :: f0 = 18.d0
@@ -124,12 +130,7 @@
   tau_epsilon_nu2 = (/  0.112028084581976    ,   1.093882462934487E-002,  1.167173427475064E-003/)
   tau_sigma_nu2 = (/  8.841941282883074E-002,  8.841941282883075E-003,  8.841941282883074E-004/)
 
-! position of the receiver
-  x1 = +500.
-  x2 = +500.
-
   print *,'Force source located at the origin (0,0)'
-  print *,'Receiver located in (x,z) = ',x1,x2
 
   if (TURN_ATTENUATION_OFF) then
     print *,'BEWARE: computing the elastic reference solution (i.e., without attenuation) instead of the viscoelastic solution'
@@ -184,6 +185,13 @@
     write(10,*) sngl(freq),sngl(ampli(ifreq))
   enddo
   close(10)
+
+! compute and save the solution for all receivers; receiver number matches
+! station_N in RECT and S000N in SPECFEM2D
+  do ireceiver = 1,nreceivers
+    x1 = receiver_x(ireceiver)
+    x2 = receiver_z(ireceiver)
+    print *,'Receiver ',ireceiver,' located in (x,z) = ',x1,x2
 
 ! ************** calcul solution analytique ****************
 
@@ -306,17 +314,18 @@
 
   if (TURN_ATTENUATION_OFF) then
     if (DO_NOT_COMPUTE_THE_NEAR_FIELD) then
-      open(unit=11,file='Ux_time_analytical_solution_elastic_without_near_field.dat',status='unknown')
+      write(output_filename,'(A,I0,A)') 'Ux_time_analytical_solution_elastic_without_near_field_station_',ireceiver,'.dat'
     else
-      open(unit=11,file='Ux_time_analytical_solution_elastic.dat',status='unknown')
+      write(output_filename,'(A,I0,A)') 'Ux_time_analytical_solution_elastic_station_',ireceiver,'.dat'
     endif
   else
     if (DO_NOT_COMPUTE_THE_NEAR_FIELD) then
-      open(unit=11,file='Ux_time_analytical_solution_viscoelastic_without_near_field.dat',status='unknown')
+      write(output_filename,'(A,I0,A)') 'Ux_time_analytical_solution_viscoelastic_without_near_field_station_',ireceiver,'.dat'
     else
-      open(unit=11,file='Ux_time_analytical_solution_viscoelastic.dat',status='unknown')
+      write(output_filename,'(A,I0,A)') 'Ux_time_analytical_solution_viscoelastic_station_',ireceiver,'.dat'
     endif
   endif
+  open(unit=11,file=trim(output_filename),status='replace')
   do it=1,nt
 ! DK DK Dec 2011: subtract t0 to be consistent with the SPECFEM2D code
         time = dble(it-1)*deltat - t0
@@ -374,17 +383,18 @@
 ! save time result inverse FFT for Uz
   if (TURN_ATTENUATION_OFF) then
     if (DO_NOT_COMPUTE_THE_NEAR_FIELD) then
-      open(unit=11,file='Uz_time_analytical_solution_elastic_without_near_field.dat',status='unknown')
+      write(output_filename,'(A,I0,A)') 'Uz_time_analytical_solution_elastic_without_near_field_station_',ireceiver,'.dat'
     else
-      open(unit=11,file='Uz_time_analytical_solution_elastic.dat',status='unknown')
+      write(output_filename,'(A,I0,A)') 'Uz_time_analytical_solution_elastic_station_',ireceiver,'.dat'
     endif
   else
     if (DO_NOT_COMPUTE_THE_NEAR_FIELD) then
-      open(unit=11,file='Uz_time_analytical_solution_viscoelastic_without_near_field.dat',status='unknown')
+      write(output_filename,'(A,I0,A)') 'Uz_time_analytical_solution_viscoelastic_without_near_field_station_',ireceiver,'.dat'
     else
-      open(unit=11,file='Uz_time_analytical_solution_viscoelastic.dat',status='unknown')
+      write(output_filename,'(A,I0,A)') 'Uz_time_analytical_solution_viscoelastic_station_',ireceiver,'.dat'
     endif
   endif
+  open(unit=11,file=trim(output_filename),status='replace')
   do it=1,nt
 ! DK DK Dec 2011: subtract t0 to be consistent with the SPECFEM2D code
         time = dble(it-1)*deltat - t0
@@ -393,6 +403,8 @@
         if (time >= 0.d0 .and. time <= 6.d0) write(11,*) sngl(time),real(c(it))
   enddo
   close(11)
+
+  enddo
 
   end
 
