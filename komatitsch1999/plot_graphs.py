@@ -2,7 +2,6 @@
 """Plot RECT and SPECFEM2D solutions and their convergence graphs."""
 
 from pathlib import Path
-import re
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,7 +16,7 @@ OUTPUT_DIR = BASE_DIR / "graphs"
 F0 = 18.0
 TIME_SHIFT = 1.2 / F0
 TIME_LIMITS = (0.0, 0.6)
-DOMAIN_SIZE_X = 2000.0
+RECT_DOMAIN_SIZE_X = 2500.0
 
 # analytical_suffix is appended to analytical filenames.  SPECFEM station names
 # use the receiver number written to files such as AA.S0001.BXX.semd.
@@ -37,6 +36,7 @@ COMPONENTS = {
 SPECFEM_PROJECT_PREFIX = (
     "check_absolute_amplitude_of_force_source_seismograms_viscoelastic_auto_nx_"
 )
+RECT_PROJECT_PREFIX = "viscoelastic_schema_nx_"
 
 
 def read_two_column_file(filename: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -64,17 +64,17 @@ def read_station_rect(filename: Path) -> dict[str, np.ndarray]:
     return data
 
 
-def discover_rect_cases() -> list[tuple[float, Path]]:
+def discover_rect_cases() -> list[tuple[int, Path]]:
     cases = []
-    pattern = re.compile(r"viscoelastic_schema-h_(.+)")
-    for path in RECT_SOL_DIR.glob("viscoelastic_schema-h_*"):
-        match = pattern.fullmatch(path.name)
-        if match and path.is_dir():
-            try:
-                h = float(match.group(1))
-            except ValueError:
-                continue
-            cases.append((h, path))
+    for path in RECT_SOL_DIR.glob(f"{RECT_PROJECT_PREFIX}*"):
+        if not path.is_dir():
+            continue
+        try:
+            nx = int(path.name.removeprefix(RECT_PROJECT_PREFIX))
+        except ValueError:
+            # Timing projects end with "_timing" and have no saved solution.
+            continue
+        cases.append((nx, path))
     return sorted(cases, key=lambda case: case[0])
 
 
@@ -261,7 +261,7 @@ def process_rect() -> None:
         raise FileNotFoundError(f"Не найдены расчёты RECT в {RECT_SOL_DIR}")
 
     errors: dict[tuple[str, str], list[dict[str, float]]] = {}
-    for h, case_dir in cases:
+    for nx, case_dir in cases:
         for station in STATIONS:
             station_file = case_dir / "result" / "txt" / f"{station}.txt"
             numerical = read_station_rect(station_file)
@@ -273,15 +273,15 @@ def process_rect() -> None:
                     load_analytical_solutions(station, component)
                 )
                 filename = OUTPUT_DIR / (
-                    f"rect-{station}-{component}-h_{h:g}-solution.png"
+                    f"rect-{station}-{component}-nx_{nx}-solution.png"
                 )
                 plot_solution(
                     numerical_time,
                     numerical_value,
                     analytical_viscoelastic,
                     analytical_elastic,
-                    f"RECT h={h:g}",
-                    f"RECT: {station}, {component}, h={h:g}",
+                    f"RECT nx={nx}",
+                    f"RECT: {station}, {component}, nx={nx}",
                     filename,
                 )
                 norms = calculate_error_norms(
@@ -290,11 +290,12 @@ def process_rect() -> None:
                     *analytical_viscoelastic,
                 )
                 errors.setdefault((station, component), []).append(
-                    {"nx": DOMAIN_SIZE_X / h, **norms}
+                    {"nx": nx, "h": RECT_DOMAIN_SIZE_X / nx, **norms}
                 )
 
     for (station, component), rows in errors.items():
         plot_error_graph(rows, "nx", station, component, "rect")
+        plot_error_graph(rows, "h", station, component, "rect")
 
 
 def process_specfem() -> None:

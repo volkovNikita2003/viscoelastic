@@ -23,8 +23,8 @@ komatitsch1999/analytical_sol/spectrum_of_the_source_used.gnu
 komatitsch1999/graphs
 komatitsch1999/rect_*/elastic*
 komatitsch1999/rect_*/viscoelastic*
-komatitsch1999/rect_*/calc-all.sh
-komatitsch1999/rect_*/clean-all.sh
+komatitsch1999/rect_*/calc_rect.sh
+komatitsch1999/rect_*/clean_rect.sh
 komatitsch1999/rect_sol_old
 
 komatitsch1999/specfem_sol/bin

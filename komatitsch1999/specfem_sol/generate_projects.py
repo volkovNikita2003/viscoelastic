@@ -17,9 +17,9 @@ TEMPLATE_DIR = BASE_DIR / (
 PROJECT_NAME_PREFIX = (
     "check_absolute_amplitude_of_force_source_seismograms_viscoelastic_auto"
 )
-NX_VALUES = (100,)
+NX_VALUES = (100, 80, 60, 50)
 CFL = 0.5
-VP = 3297.8490000000002
+VP = 3297.849
 T_TOTAL_S = 0.65
 DOMAIN_SIZE_M = 2500.0
 SPECTRAL_POLYNOMIAL_DEGREE = 4
@@ -76,7 +76,7 @@ def calculate_min_gll_distance(h_se: float, degree: int) -> float:
 
 
 def calculate_parameters(nx: int) -> dict[str, int | float]:
-    h_se = DOMAIN_SIZE_M / nx
+    h_se = DOMAIN_SIZE_M / nx  # h of spectral element
     h_min = calculate_min_gll_distance(h_se, SPECTRAL_POLYNOMIAL_DEGREE)
     dt = CFL * h_min / VP
     nstep = math.ceil(T_TOTAL_S / dt)
@@ -177,9 +177,9 @@ TIMING_PROJECTS=({bash_timing_projects})
 
 for project in "${{PROJECTS[@]}}"; do
     cd "$SCRIPT_DIR/$project"
-    echo "Запуск расчёта в $PWD"
+    echo "Запуск расчета в $PWD"
     ./run_this_example.sh > log_run.txt 2>&1
-    echo "Расчёт завершён. Журнал: $PWD/log_run.txt"
+    echo "Расчет завершен. Журнал: $PWD/log_run.txt"
 done
 
 TIMEFORMAT=$'real_s=%R\nuser_s=%U\nsys_s=%S'
@@ -187,7 +187,7 @@ for project in "${{TIMING_PROJECTS[@]}}"; do
     cd "$SCRIPT_DIR/$project"
     echo "Запуск замера времени в $PWD"
     {{ time ./run_this_example.sh > log_run.txt 2>&1; }} 2> timing.txt
-    echo "Замер завершён. Результат: $PWD/timing.txt"
+    echo "Замер завершен. Результат: $PWD/timing.txt"
     cat timing.txt
 done
 """,
@@ -204,11 +204,11 @@ TIMING_PROJECTS=({bash_timing_projects})
 for project in "${{PROJECTS[@]}}" "${{TIMING_PROJECTS[@]}}"; do
     echo "Удаление проекта: $SCRIPT_DIR/$project"
     rm -rf -- "$SCRIPT_DIR/$project"
-    echo "Проект удалён: $project"
+    echo "Проект удален: $project"
 done
 """,
     )
-    print(f"Создан скрипт запуска расчёта: {BASE_DIR / 'calc_specfem.sh'}")
+    print(f"Создан скрипт запуска расчета: {BASE_DIR / 'calc_specfem.sh'}")
     print(f"Создан скрипт удаления проектов: {BASE_DIR / 'clean_specfem.sh'}")
 
 
