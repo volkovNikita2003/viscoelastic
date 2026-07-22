@@ -31,10 +31,10 @@ echo "Очистка проектов SPECFEM2D"
 "$SCRIPT_DIR/specfem_sol/clean_all.sh"
 
 CURRENT_STAGE="удаление графиков и таблиц"
-if [[ -d "$SCRIPT_DIR/graphs" ]]; then
+if [[ -d "$SCRIPT_DIR/results" ]]; then
     echo
-    echo "Удаление графиков и CSV-таблиц: $SCRIPT_DIR/graphs"
-    rm -rf -- "$SCRIPT_DIR/graphs"
+    echo "Удаление результатов анализа: $SCRIPT_DIR/results"
+    rm -rf -- "$SCRIPT_DIR/results"
 fi
 
 CURRENT_STAGE="удаление Python-кэшей"

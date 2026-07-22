@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot RECT and SPECFEM2D solutions and their convergence graphs."""
+"""Analyze RECT and SPECFEM2D results and save plots and CSV tables."""
 
 from pathlib import Path
 import csv
@@ -13,7 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent
 ANALYTICAL_DIR = BASE_DIR / "analytical_sol"
 RECT_SOL_DIR = BASE_DIR / "rect_sol"
 SPECFEM_SOL_DIR = BASE_DIR / "specfem_sol"
-OUTPUT_DIR = BASE_DIR / "graphs"
+OUTPUT_DIR = BASE_DIR / "results"
 
 F0 = 18.0
 TIME_SHIFT = 1.2 / F0

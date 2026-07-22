@@ -8,10 +8,10 @@ from make_impulse import gen_ricker_imp_specfem
 
 
 DIR_TEMPLATE = Path("templates")
-DIR_RECT = Path("~/rect_git/rect/build/")
 
 # количество отрезков (элементов) по направлению X
-NX_VALUES = (200, 400, 800, 1000, 2000, 4000, 8000)
+# NX_VALUES = (200, 400, 800, 1000, 2000, 4000, 8000)
+NX_VALUES = (200, 400, 800)
 
 RHO = 2000
 VP = 3297.849
@@ -387,9 +387,15 @@ def main():
 set -e
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${{BASH_SOURCE[0]}}")" && pwd)
-RECT_EXECUTABLE={DIR_RECT}/rect
+RECT_EXECUTABLE="$SCRIPT_DIR/bin/rect"
 PROJECTS=({bash_projects})
 TIMING_PROJECTS=({bash_timing_projects})
+
+if [[ ! -x "$RECT_EXECUTABLE" ]]; then
+    echo "Ошибка: не найден исполняемый файл RECT: $RECT_EXECUTABLE" >&2
+    echo "Создайте ссылку rect_sol/bin/rect согласно README.md" >&2
+    exit 1
+fi
 
 for project in "${{PROJECTS[@]}}"; do
     cd "$SCRIPT_DIR/$project"

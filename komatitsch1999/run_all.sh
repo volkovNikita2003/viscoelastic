@@ -38,7 +38,7 @@ echo "Запуск всех расчётов SPECFEM2D"
 CURRENT_STAGE="построение графиков и таблиц"
 echo
 echo "Построение графиков и таблиц"
-python3 "$SCRIPT_DIR/plot_graphs.py"
+python3 "$SCRIPT_DIR/analyze_results.py"
 
 CURRENT_STAGE="завершение"
 echo
