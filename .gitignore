@@ -32,8 +32,17 @@ komatitsch1999/specfem_sol/calc_specfem.sh
 komatitsch1999/specfem_sol/clean_specfem.sh
 
 halfspace/rect_sol/viscoelastic*
-halfspace/rect_sol/viscoelastic*
 halfspace/rect_sol/bin
 halfspace/results
 halfspace/specfem_sol/bin
 halfspace/specfem_sol/check_absolute_amplitude_of_force_source_seismograms_viscoelastic_auto*
+
+two_halfspace/rect_sol/viscoelastic*
+two_halfspace/rect_sol/calc_rect.sh
+two_halfspace/rect_sol/clean_rect.sh
+two_halfspace/rect_sol/bin
+two_halfspace/results
+two_halfspace/specfem_sol/bin
+two_halfspace/specfem_sol/check_absolute_amplitude_of_force_source_seismograms_viscoelastic_auto*
+two_halfspace/specfem_sol/calc_specfem.sh
+two_halfspace/specfem_sol/clean_specfem.sh
